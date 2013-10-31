@@ -5,7 +5,6 @@ RDFa Liteはhtmlをマークアップし，メタデータを付与するため�
 Microdataによるマークアップを取得するMicrodata.phpをもとにし，RDFa Lite用に修正しています。
 
 ##使用方法
-
 ```
 php urlrdfa2013.php sample.html
 ```
