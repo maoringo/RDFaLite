@@ -91,6 +91,7 @@ class RDFaLite {
 	 * @param object $item	root element of an item
 	 * @return object	id, type and properties of the item
 	 */
+     //ここで渡すためのオブジェクトに入れているらしい。
 	protected function getNames($item) {
 		/* numbered comments are steps described in RDFa Lite spec §2.5 */
 		//1. Let results, memory, and pending be empty lists of elements
@@ -106,13 +107,23 @@ class RDFaLite {
 		if ($typeof = $item->typeof()) {
 			$result->type = $typeof;
 		}
+		// Add prefix. 
+		if ($prefix = $item->prefix()) {
+            //vocabと同じ場所にあるprefixはここで渡す。
+			$result->prefix = $prefix;
+		}
 		// Add itemid. 
 		if ($itemid = $item->itemId($this->baseUri)) {
 			$result->id = $itemid;
 		}
+        
+    //separate prefix and property 
+        $propprefix = $item->getPending($this->baseUri);
+
 		// Add properties.
 		//steps 3, 4, 9 (add child elements to pending) are processed in getPending()
-		foreach ($item->getPending($this->baseUri) as $elem) {
+
+		foreach ($propprefix[0] as $elem) {
 			//5. Loop: If pending is empty, jump to the step labeled end of loop.
 			//6. Remove an element from pending and let current be that element.
 			//i.e. $elem is 'current', returned array from getPending() is 'pending'
@@ -129,14 +140,22 @@ class RDFaLite {
 				else {
 					$varr = $elem->itemValue($this->baseUri);
 				}
+
 				//10. (If current has an property attribute specified and the element has one or more property names, then) add the element to results.
 				foreach ($elem->property() as $prop) {
+                    //propertyに関するタグに囲まれた中身を入れ込んでいる。
 					// @changed from string $value to array $varr to handle value type, lang etc.
-					$result->properties[$prop][] = $varr;
+                					$result->properties[$prop][] = $varr;
 				}
 			}
 		}
+        //Add internal prefix //propertyと同じように入れ子になっているprefixを追記していく。
+        foreach ($propprefix[1] as $prefixelem) {
+            $result-> prefix = array_merge($result->prefix, $prefixelem->prefixnames);
+        }
+
 		return $result;
+
 	}
 	
 	//@@ methods added by masaka ////////////////////////////
@@ -213,7 +232,7 @@ class RDFaLite {
 						}elseif(isset($pval['datatype']) and $pval['datatype']){
 							$prop[] = array(
 								"@value" => $pval['value'],
-								"@type" => $pval['datatype']
+								"@type" => $pval['datatype'],
 							);
 						}else{
 							$prop[] = $pval['value'];
@@ -292,6 +311,18 @@ class RDFaLitePhpDOMElement extends DOMElement {
 	public function vocab() {
 		return $this->hasAttribute('vocab');
 	}
+    /*To extract external data */
+    //単にprefixがあるときのその中身を取って来ている。
+	public function prefix() {
+	     $prefix = $this->getAttribute('prefix');
+	        if (!empty($prefix)) {
+            return $this->tokenList($prefix);
+                             }
+        return array();
+		// Return NULL instead of the empty string returned by getAttributes so we
+		// can use the function for boolean tests.
+	}
+
 
 	/**
 	* Retrieve this item's typeofs.
@@ -301,7 +332,7 @@ class RDFaLitePhpDOMElement extends DOMElement {
 	*/
 	public function typeof() {
 		$typeof = $this->getAttribute('typeof');
-        if (!empty($typeof)) {
+	 if (!empty($typeof)) {
             return $this->tokenList($typeof);
                              }
         return array();
@@ -357,8 +388,11 @@ class RDFaLitePhpDOMElement extends DOMElement {
 	*   An array of RDFaLitePhpDOMElements which are properties of this
 	*   element.
 	*/
+    //ここでpropertyと同時に存在するprefixも取り出している。traverseは再帰的にタグの階層構造の奥までデータを取得している。
 	public function getPending($baseUri) {
 		$props = array();
+        //props for prefix by Maori
+        $prefixlist = array();
 
 		if ($this->vocab()) {
 			$toTraverse = array($this);
@@ -379,15 +413,17 @@ class RDFaLitePhpDOMElement extends DOMElement {
 							$child->setAttribute('itemid', $itemid);
 						}
 					}
-					$this->traverse($child, $toTraverse, $props, $this);
+					$this->traverse($child, $toTraverse, $props, $this,$prefixlist);
 				}
 			}
 			while (count($toTraverse)) {
-				$this->traverse($toTraverse[0], $toTraverse, $props, $this);
-			}
+				$this->traverse($toTraverse[0], $toTraverse, $props, $this,$prefixlist);
+		}
 		}
 
-		return $props;
+//		return $props;
+//List で返す。
+return array($props,$prefixlist);
 	}
 
 	/**
@@ -495,7 +531,8 @@ class RDFaLitePhpDOMElement extends DOMElement {
 	* See comment for RDFaLitePhp:getObject() for an explanation of closure use
 	* in this library.
 	*/
-	protected function traverse($node, &$toTraverse, &$props, $root) {
+    //ここで再帰的にpropertyとprefixをもれなく取り出している。prefixはlistとしてまとめている。
+	protected function traverse($node, &$toTraverse, &$props, $root, &$prefixlist) {
 		foreach ($toTraverse as $i => $elem)  {
 			if ($elem->isSameNode($node)){
 				unset($toTraverse[$i]);
@@ -503,6 +540,13 @@ class RDFaLitePhpDOMElement extends DOMElement {
 		}
 		if (!$root->isSameNode($node)) {
 			$names = $node->property();
+            $prefixnames = $node->prefix();
+           if ($prefixnames){
+$prefixprops->prefixnames = $prefixnames;
+array_push($prefixlist,$prefixprops);
+return $prefixlist;
+           }
+           
 			if (count($names)) {
 				//@todo Add support for property name filtering.
 				$props[] = $node;
@@ -517,10 +561,11 @@ class RDFaLitePhpDOMElement extends DOMElement {
 			// the call to getAttributes() in property().
 			$children = $this->ownerDocument->xpath()->query($node->getNodePath() . '/*'); //*/
 			foreach ($children as $child) {
-				$this->traverse($child, $toTraverse, $props, $root);
+				$this->traverse($child, $toTraverse, $props, $root, $prefixlist);
 			}
 		}
 	}
+
 
 	//@@ methods added by masaka ////////////////////////////
 	/**

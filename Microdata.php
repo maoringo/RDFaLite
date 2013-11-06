@@ -302,12 +302,15 @@ class MicrodataPhpDOMElement extends DOMElement {
 	*/
 	public function itemType() {
 		$itemtype = $this->getAttribute('itemtype');
+//        print_r($this);
+        //配列の導入を確認
 		if (!empty($itemtype)) {
 			//itemtype "a valid URL that is an absolute URL" so 2nd arg of tokenList is true (check if it is abs URI)
 			return $this->tokenList($itemtype, true);
 		}
 		// Return NULL instead of the empty string returned by getAttributes so we
 		// can use the function for boolean tests.
+        print_r($itemtype);
 		return NULL;
 	}
 
