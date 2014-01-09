@@ -96,6 +96,8 @@ class RDFaLite {
 		/* numbered comments are steps described in RDFa Lite spec §2.5 */
 		//1. Let results, memory, and pending be empty lists of elements
 		// @original microdataPHP has $memory as second param, passed from parent, but its better to set memory within this function (as defined in RDFaLite spec)
+//        print "item\n";
+//        print_r($item);
 		$result = new stdClass();
 		$result->properties = array();
 		$memory = array();
@@ -104,6 +106,7 @@ class RDFaLite {
 		$item->baseUri = $this->baseUri; //set base for resolveUri()
 	
 		// Add typeof.
+        //print_r($item);
 		if ($typeof = $item->typeof()) {
 			$result->type = $typeof;
 		}
@@ -133,7 +136,8 @@ class RDFaLite {
 			} else {
 				//8. Add current to memory. (= mark as already processed)
 				$memory[] = $this->test_id($elem);
-				if ($elem->vocab()) {
+                    #print_r($elem);
+				if ($elem->typer()) {
 					// @ removed original $memory error check here
 					$varr = $this->getNames($elem);
 				}
@@ -308,9 +312,13 @@ class RDFaLitePhpDOMElement extends DOMElement {
 	* @return
 	*   boolean TRUE if this is an item, FALSE if it is not.
 	*/
-	public function vocab() {
-		return $this->hasAttribute('vocab');
+    //typeofまたはprefixがあるときはその中身を見る。
+	public function typer() {
+        if ($this->hasAttribute('typeof') or $this->hasAttribute('prefix')){
+		return "1";
 	}
+    }
+
     /*To extract external data */
     //単にprefixがあるときのその中身を取って来ている。
 	public function prefix() {
@@ -322,8 +330,6 @@ class RDFaLitePhpDOMElement extends DOMElement {
 		// Return NULL instead of the empty string returned by getAttributes so we
 		// can use the function for boolean tests.
 	}
-
-
 	/**
 	* Retrieve this item's typeofs.
 	*
@@ -393,13 +399,12 @@ class RDFaLitePhpDOMElement extends DOMElement {
 		$props = array();
         //props for prefix by Maori
         $prefixlist = array();
-
-		if ($this->vocab()) {
+		if ($this->typer()) {
 			$toTraverse = array($this);
 			foreach ($this->resource() as $resource) {
 				$children = $this->ownerDocument->xpath()->query('//*[@id="'.$resource.'"]');
 				foreach($children as $child) {
-					if($child->vocab()){
+					if($child->typer()){
 						if(! $itemid = $child->itemId($baseUri)){
 							//generate pseudo itemid as bnode
 							$itemid = "_:".$child->getAttribute('id');
@@ -439,7 +444,7 @@ return array($props,$prefixlist);
 		//$this->is_uri = false;
 		if (empty($property))
 			return null;
-		if ($this->vocab()) {
+		if ($this->typer()) {
 			return $this;
 		}
 		// @changed return value from string to array, to add contextual info.
@@ -551,7 +556,7 @@ return $prefixlist;
 				//@todo Add support for property name filtering.
 				$props[] = $node;
 			}
-			if ($node->vocab()) {
+			if ($node->typer()) {
 				return;
 			}
 		}
@@ -647,8 +652,8 @@ class RDFaLitePhpDOMDocument extends DOMDocument {
 	* @todo Allow restriction by type string.
 	*/
 	public function getItems() {
-		// Return top level items.
-		return $this->xpath()->query('//*[@vocab and not(@property)]');
+		// Return top level items. typeof または prefixの時にgetItemsを使う。
+		return $this->xpath()->query('//*[(@typeof or @prefix) and not(@property)]');
 	}
 
 	/**
